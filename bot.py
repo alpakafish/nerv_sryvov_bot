@@ -232,8 +232,9 @@ async def show_month_stats(message: types.Message):
     for day in range(1, days_in_month + 1):
         count = stats.get(day, 0)
         if count > 0:
-            # Визуализация полосками (максимум 15 полосок)
-            bars = "█" * min(count, 15)
+            # Визуализация (максимум 10 эмодзи)
+            angry_face = "🤬"  # или можно 👿, 😤, 💢
+            bars = angry_face * min(count, 10)  # уменьшила до 10, чтобы не было слишком длинно
             days_with_stresses.append(f"• {day:2d}.{month:02d} — {count} {bars}")
 
     if days_with_stresses:

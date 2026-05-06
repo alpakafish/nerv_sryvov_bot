@@ -321,13 +321,15 @@ async def show_month_stats(message: types.Message):
 # Обработчик непонятных сообщений
 @dp.message()
 async def handle_unknown(message: types.Message):
+    # Временная отладка
+    print(f"DEBUG: Получен неизвестный текст: '{message.text}'")
     await message.answer(
         "Пожалуйста, используй кнопки меню. Если меню пропало, нажми /start",
         reply_markup=get_main_keyboard()
     )
 
 
-# Обработчик кнопки "Случайный срыв от Скелетора" (ИСПРАВЛЕННЫЙ)
+# Обработчик кнопки "Случайный срыв" (ИСПРАВЛЕННЫЙ)
 @dp.message(lambda message: message.text == "🎲 Случайный срыв")
 async def random_news_stress(message: types.Message, state: FSMContext):
     user_id = message.from_user.id

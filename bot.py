@@ -382,12 +382,12 @@ async def random_news_stress(message: types.Message, state: FSMContext):
         session = UserNewsSession()
 
     if not session.has_titles():
-        await message.answer("🔄 Загружаю свежие научные новости с Naked Science...")
+        await message.answer("🔄 Загружаю свежие причины...")
         fresh_titles = await asyncio.to_thread(fetch_titles_from_page)
 
         if not fresh_titles:
             await message.answer(
-                "⚠️ Не удалось загрузить свежие научные новости.\n"
+                "⚠️ Не удалось загрузить свежие причины.\n"
                 "Попробуй позже или нажми кнопку снова.",
                 reply_markup=get_main_keyboard()
             )
@@ -400,10 +400,8 @@ async def random_news_stress(message: types.Message, state: FSMContext):
         await state.update_data(news_session=session.to_dict())
 
         response = (
-            f"🧠 *Случайный научный нервный срыв от Скелетора:*\n\n"
             f"{random_title}\n\n"
             f"🎲 Нажми снова, чтобы получить другую причину.\n"
-            f"_Осталось новостей: {len(session.remaining_titles)}_"
         )
         await message.answer(response, parse_mode="Markdown", reply_markup=get_main_keyboard())
     else:

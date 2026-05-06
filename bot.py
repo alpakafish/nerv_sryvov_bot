@@ -21,6 +21,11 @@ from config import TIMEZONE
 import requests
 from bs4 import BeautifulSoup
 import random
+import warnings
+from bs4 import XMLParsedAsHTMLWarning
+
+# Подавляем предупреждение о парсинге XML как HTML
+warnings.filterwarnings("ignore", category=XMLParsedAsHTMLWarning)
 
 # --- Конфигурация для парсинга новостей ---
 NEWS_URL = "https://naked-science.ru/?yandex_feed=news"
@@ -93,37 +98,76 @@ def get_main_keyboard():
 
 # --- Функция парсинга заголовков с повторными попытками ---
 def fetch_titles_from_page(retries=2) -> list:
-    """Загружает страницу и извлекает все заголовки из тегов <h1> с повторными попытками"""
+    """Загружает RSS-ленту и извлекает все заголовки новостей из тегов <title>"""
     for attempt in range(retries + 1):
         try:
+            print(f"Попытка {attempt + 1} из {retries + 1}...")
             response = requests.get(NEWS_URL, headers=NEWS_HEADERS, timeout=15)
             response.raise_for_status()
             response.encoding = 'utf-8'
+
+            print(f"Статус ответа: {response.status_code}")
+            print(f"Content-Type: {response.headers.get('Content-Type', 'unknown')}")
+
+            # Парсим как XML (RSS ленту)
             soup = BeautifulSoup(response.text, 'html.parser')
-            h1_tags = soup.find_all('h1')
-            titles = [h1.get_text(strip=True) for h1 in h1_tags if h1.get_text(strip=True)]
+
+            # Ищем все теги title внутри item (новости)
+            items = soup.find_all('item')
+            print(f"Найдено элементов <item>: {len(items)}")
+
+            titles = []
+            for item in items:
+                title_tag = item.find('title')
+                if title_tag and title_tag.get_text(strip=True):
+                    titles.append(title_tag.get_text(strip=True))
+
             unique_titles = list(dict.fromkeys(titles))
             print(f"Успешно получено {len(unique_titles)} уникальных заголовков")
-            return unique_titles
+
+            if unique_titles:
+                print(f"Первые 3 заголовка: {unique_titles[:3]}")
+                return unique_titles
+            else:
+                print("Заголовков не найдено в <item>, пробую все <title>...")
+                # Пробуем найти все title (включая заголовок канала)
+                all_titles = soup.find_all('title')
+                for title in all_titles[1:]:  # пропускаем первый (заголовок канала)
+                    text = title.get_text(strip=True)
+                    if text:
+                        titles.append(text)
+                unique_titles = list(dict.fromkeys(titles))
+                if unique_titles:
+                    print(f"Найдено {len(unique_titles)} заголовков через all_titles")
+                    return unique_titles
+
         except Exception as e:
             print(f"Попытка {attempt + 1} из {retries + 1} не удалась: {e}")
             if attempt == retries:
-                # Запасной список на случай ошибки
                 print("Использую запасной список заголовков")
-                return [
-                    "Ученые обнаружили неожиданное свойство кофе",
-                    "Физики случайно создали новое состояние материи",
-                    "Астрономы нашли планету с тремя солнцами",
-                    "Биологи вырастили мини-мозг в пробирке",
-                    "Роботы научились чувствовать боль",
-                    "На Марсе обнаружены следы древней жизни",
-                    "ИИ впервые превзошел человека в креативности",
-                    "Медики нашли способ обратить старение вспять",
-                    "Открыт новый вид динозавра с перьями",
-                    "Квантовый компьютер решил нерешаемую задачу"
-                ]
-            asyncio.sleep(2)
-    return []
+                return get_fallback_titles()
+
+        if attempt < retries:
+            import time
+            time.sleep(2)
+
+    return get_fallback_titles()
+
+
+def get_fallback_titles() -> list:
+    """Возвращает запасной список заголовков на случай, если парсинг не работает"""
+    return [
+        "Ученые обнаружили неожиданное свойство кофе",
+        "Физики случайно создали новое состояние материи",
+        "Астрономы нашли планету с тремя солнцами",
+        "Биологи вырастили мини-мозг в пробирке",
+        "Роботы научились чувствовать боль",
+        "На Марсе обнаружены следы древней жизни",
+        "ИИ впервые превзошел человека в креативности",
+        "Медики нашли способ обратить старение вспять",
+        "Открыт новый вид динозавра с перьями",
+        "Квантовый компьютер решил нерешаемую задачу"
+    ]
 
 
 # ==============================================
@@ -419,6 +463,7 @@ if __name__ == "__main__":
 
     if '--no-flask' not in sys.argv:
         import threading
+
         threading.Thread(target=run_flask, daemon=True).start()
 
     asyncio.run(main())

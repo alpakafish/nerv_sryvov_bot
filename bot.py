@@ -108,15 +108,31 @@ def fetch_titles_from_page(retries=2) -> list:
         except Exception as e:
             print(f"Попытка {attempt + 1} из {retries + 1} не удалась: {e}")
             if attempt == retries:
-                return []
-            asyncio.sleep(2)  # Ждем перед повторной попыткой
+                # Запасной список на случай ошибки
+                print("Использую запасной список заголовков")
+                return [
+                    "Ученые обнаружили неожиданное свойство кофе",
+                    "Физики случайно создали новое состояние материи",
+                    "Астрономы нашли планету с тремя солнцами",
+                    "Биологи вырастили мини-мозг в пробирке",
+                    "Роботы научились чувствовать боль",
+                    "На Марсе обнаружены следы древней жизни",
+                    "ИИ впервые превзошел человека в креативности",
+                    "Медики нашли способ обратить старение вспять",
+                    "Открыт новый вид динозавра с перьями",
+                    "Квантовый компьютер решил нерешаемую задачу"
+                ]
+            asyncio.sleep(2)
     return []
 
 
-# Обработчик команды /start
+# ==============================================
+# ОБРАБОТЧИКИ (В ПРАВИЛЬНОМ ПОРЯДКЕ)
+# ==============================================
+
+# 1. Команда /start
 @dp.message(Command("start"))
 async def cmd_start(message: types.Message):
-    # Регистрируем пользователя
     user = message.from_user
     await register_user(
         user.id,
@@ -133,20 +149,19 @@ async def cmd_start(message: types.Message):
     )
 
 
-# Обработчик кнопки "Причина нервного срыва"
+# 2. Обработчик кнопки "Причина нервного срыва"
 @dp.message(lambda message: message.text == "😫 Причина нервного срыва")
 async def add_stress(message: types.Message, state: FSMContext):
-    # Получаем следующий номер за сегодня
     next_number = await get_next_today_number(message.from_user.id)
     await state.set_state(StressState.waiting_for_reason)
     await message.answer(
         f"📝 Напиши, что вывело тебя из себя.\n"
         f"Это будет твой срыв #{next_number} за сегодня.",
-        reply_markup=types.ReplyKeyboardRemove()  # Убираем меню на время ввода
+        reply_markup=types.ReplyKeyboardRemove()
     )
 
 
-# Обработчик текста причины срыва
+# 3. Обработчик текста причины срыва (состояние FSM)
 @dp.message(StressState.waiting_for_reason)
 async def process_stress_reason(message: types.Message, state: FSMContext):
     if not message.text or len(message.text.strip()) == 0:
@@ -156,13 +171,10 @@ async def process_stress_reason(message: types.Message, state: FSMContext):
     reason_text = message.text.strip()
     user_id = message.from_user.id
 
-    # Сохраняем в базу данных
     await save_stress_message(user_id, reason_text)
-
-    # Получаем номер сообщения
     number = await get_next_today_number(user_id)
 
-    await state.clear()  # Очищаем состояние
+    await state.clear()
     await message.answer(
         f"✅ Срыв #{number - 1} за сегодня сохранен!\n\n"
         f"Твой текст: {reason_text}\n\n"
@@ -171,7 +183,7 @@ async def process_stress_reason(message: types.Message, state: FSMContext):
     )
 
 
-# Обработчик кнопки "Срывы за сегодня"
+# 4. Обработчик кнопки "Срывы за сегодня"
 @dp.message(lambda message: message.text == "📆 Срывы за сегодня")
 async def show_today_stresses(message: types.Message):
     stresses = await get_today_stresses(message.from_user.id)
@@ -183,21 +195,19 @@ async def show_today_stresses(message: types.Message):
         )
         return
 
-    # Формируем ответ
     response = "📆 Твои срывы за сегодня:\n\n"
     for i, stress in enumerate(stresses, 1):
         created_at = stress['created_at']
         if isinstance(created_at, datetime):
             time_str = created_at.strftime("%H:%M")
         else:
-            # Более безопасное преобразование
-            time_str = str(created_at)[:16] if created_at else "время неизвестно"
+            time_str = "время неизвестно"
         response += f"{i}. {stress['message_text']} ({time_str})\n"
 
     await message.answer(response, reply_markup=get_main_keyboard())
 
 
-# Обработчик кнопки "Срывы за месяц"
+# 5. Обработчик кнопки "Срывы за месяц"
 @dp.message(lambda message: message.text == "📅 Срывы за месяц")
 async def show_month_stresses(message: types.Message):
     stresses = await get_month_stresses(message.from_user.id)
@@ -206,11 +216,11 @@ async def show_month_stresses(message: types.Message):
         tz = pytz.timezone(TIMEZONE)
         now = datetime.now(tz)
         month_name = now.strftime("%B")
-        # Переводим название месяца на русский
         months_ru = {
-            "January": "Январь", "February": "Февраль", "March": "Март", "April": "Апрель",
-            "May": "Май", "June": "Июнь", "July": "Июль", "August": "Август",
-            "September": "Сентябрь", "October": "Октябрь", "November": "Ноябрь", "December": "Декабрь"
+            "January": "Январь", "February": "Февраль", "March": "Март",
+            "April": "Апрель", "May": "Май", "June": "Июнь",
+            "July": "Июль", "August": "Август", "September": "Сентябрь",
+            "October": "Октябрь", "November": "Ноябрь", "December": "Декабрь"
         }
         month_name_ru = months_ru.get(month_name, month_name)
         await message.answer(
@@ -219,13 +229,13 @@ async def show_month_stresses(message: types.Message):
         )
         return
 
-    # Формируем ответ (показываем последние 20, чтобы не перегружать)
     tz = pytz.timezone(TIMEZONE)
     now = datetime.now(tz)
     months_ru = {
-        "January": "Январь", "February": "Февраль", "March": "Март", "April": "Апрель",
-        "May": "Май", "June": "Июнь", "July": "Июль", "August": "Август",
-        "September": "Сентябрь", "October": "Октябрь", "November": "Ноябрь", "December": "Декабрь"
+        "January": "Январь", "February": "Февраль", "March": "Март",
+        "April": "Апрель", "May": "Май", "June": "Июнь",
+        "July": "Июль", "August": "Август", "September": "Сентябрь",
+        "October": "Октябрь", "November": "Ноябрь", "December": "Декабрь"
     }
     month_name_ru = months_ru.get(now.strftime("%B"), now.strftime("%B"))
 
@@ -235,7 +245,7 @@ async def show_month_stresses(message: types.Message):
         if isinstance(created_at, datetime):
             date_str = created_at.strftime("%d.%m %H:%M")
         else:
-            date_str = str(created_at)[:16] if created_at else "дата неизвестна"
+            date_str = "дата неизвестна"
         response += f"{i}. {stress['message_text']} ({date_str})\n"
 
     if len(stresses) > 20:
@@ -244,7 +254,7 @@ async def show_month_stresses(message: types.Message):
     await message.answer(response, reply_markup=get_main_keyboard())
 
 
-# Обработчик кнопки "Всего срывов"
+# 6. Обработчик кнопки "Всего срывов"
 @dp.message(lambda message: message.text == "📊 Всего срывов")
 async def show_total_stresses(message: types.Message):
     total = await get_total_stresses(message.from_user.id)
@@ -271,7 +281,7 @@ async def show_total_stresses(message: types.Message):
         )
 
 
-# Обработчик кнопки "Статистика месяца"
+# 7. Обработчик кнопки "Статистика месяца"
 @dp.message(lambda message: message.text == "📈 Статистика месяца")
 async def show_month_stats(message: types.Message):
     stats = await get_month_statistics(message.from_user.id)
@@ -281,10 +291,8 @@ async def show_month_stats(message: types.Message):
     year = now.year
     month = now.month
 
-    # Получаем количество дней в месяце
     days_in_month = calendar.monthrange(year, month)[1]
 
-    # Русские названия месяцев
     months_ru = {
         1: "Январь", 2: "Февраль", 3: "Март", 4: "Апрель",
         5: "Май", 6: "Июнь", 7: "Июль", 8: "Август",
@@ -292,15 +300,12 @@ async def show_month_stats(message: types.Message):
     }
     month_name_ru = months_ru[month]
 
-    # Формируем статистику в простом текстовом формате
     response = f"📈 Статистика за {month_name_ru} {year}:\n\n"
 
-    # Собираем строки с днями, где есть срывы
     days_with_stresses = []
     for day in range(1, days_in_month + 1):
         count = stats.get(day, 0)
         if count > 0:
-            # Визуализация (максимум 10 эмодзи)
             angry_face = "🤬"
             bars = angry_face * min(count, 10)
             days_with_stresses.append(f"• {day:2d}.{month:02d} — {count} {bars}")
@@ -310,7 +315,6 @@ async def show_month_stats(message: types.Message):
     else:
         response += "✨ В этом месяце не было ни одного срыва! ✨"
 
-    # Добавляем итог
     total_month = sum(stats.values())
     if total_month > 0:
         response += f"\n\n📊 Всего за месяц: {total_month}"
@@ -318,24 +322,12 @@ async def show_month_stats(message: types.Message):
     await message.answer(response, reply_markup=get_main_keyboard())
 
 
-# Обработчик непонятных сообщений
-@dp.message()
-async def handle_unknown(message: types.Message):
-    # Временная отладка
-    print(f"DEBUG: Получен неизвестный текст: '{message.text}'")
-    await message.answer(
-        "Пожалуйста, используй кнопки меню. Если меню пропало, нажми /start",
-        reply_markup=get_main_keyboard()
-    )
-
-
-# Обработчик кнопки "Случайный срыв" (ИСПРАВЛЕННЫЙ)
+# 8. Обработчик кнопки "Случайный срыв"
 @dp.message(lambda message: message.text == "🎲 Случайный срыв")
 async def random_news_stress(message: types.Message, state: FSMContext):
     user_id = message.from_user.id
     user_data = await state.get_data()
 
-    # Правильное восстановление сессии
     session_data = user_data.get('news_session')
     if session_data and isinstance(session_data, dict):
         session = UserNewsSession(
@@ -347,7 +339,7 @@ async def random_news_stress(message: types.Message, state: FSMContext):
 
     if not session.has_titles():
         await message.answer("🔄 Загружаю свежие научные новости с Naked Science...")
-        fresh_titles = await asyncio.to_thread(fetch_titles_from_page)  # Запускаем в отдельном потоке
+        fresh_titles = await asyncio.to_thread(fetch_titles_from_page)
 
         if not fresh_titles:
             await message.answer(
@@ -361,7 +353,6 @@ async def random_news_stress(message: types.Message, state: FSMContext):
 
     if session.has_titles():
         random_title = session.get_random_title()
-        # Сохраняем обновленную сессию
         await state.update_data(news_session=session.to_dict())
 
         response = (
@@ -380,7 +371,19 @@ async def random_news_stress(message: types.Message, state: FSMContext):
         )
 
 
-# Функция для запуска Flask сервера
+# 9. Обработчик непонятных сообщений (ВСЕГДА В КОНЦЕ!)
+@dp.message()
+async def handle_unknown(message: types.Message):
+    await message.answer(
+        "Пожалуйста, используй кнопки меню. Если меню пропало, нажми /start",
+        reply_markup=get_main_keyboard()
+    )
+
+
+# ==============================================
+# ФЛЕСК СЕРВЕР ДЛЯ RENDER
+# ==============================================
+
 def run_flask():
     from flask import Flask
     import os
@@ -399,25 +402,23 @@ def run_flask():
     flask_app.run(host="0.0.0.0", port=port)
 
 
-# Запуск бота
+# ==============================================
+# ЗАПУСК БОТА
+# ==============================================
+
 async def main():
-    # Инициализируем базу данных
     await init_db()
     print("✅ Бот запущен и готов к работе!")
     print(f"📁 База данных: PostgreSQL на Render")
     print(f"🕐 Временная зона сервера: {TIMEZONE}")
-
-    # Запускаем бота
     await dp.start_polling(bot)
 
 
 if __name__ == "__main__":
-    # Запускаем Flask в отдельном потоке только если не на локальной разработке
     import sys
 
     if '--no-flask' not in sys.argv:
         import threading
-
         threading.Thread(target=run_flask, daemon=True).start()
 
     asyncio.run(main())

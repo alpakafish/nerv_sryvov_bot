@@ -126,7 +126,7 @@ async def show_today_stresses(message: types.Message):
             time_str = str(created_at)[:5]
         response += f"{i}. {stress['message_text']} ({time_str})\n"
 
-    await message.answer(response, reply_markup=get_main_keyboard(), parse_mode="Markdown")
+    await message.answer(response, reply_markup=get_main_keyboard())
 
 
 # Обработчик кнопки "Срывы за месяц"
@@ -173,7 +173,7 @@ async def show_month_stresses(message: types.Message):
     if len(stresses) > 20:
         response += f"\n*Всего срывов за месяц: {len(stresses)}*"
 
-    await message.answer(response, reply_markup=get_main_keyboard(), parse_mode="Markdown")
+    await message.answer(response, reply_markup=get_main_keyboard())
 
 
 # Обработчик кнопки "Всего срывов"
@@ -247,7 +247,7 @@ async def show_month_stats(message: types.Message):
     if total_month > 0:
         response += f"\n\n*📊 Всего за месяц: {total_month}*"
 
-    await message.answer(response, reply_markup=get_main_keyboard(), parse_mode="Markdown")
+    await message.answer(response, reply_markup=get_main_keyboard())
 
 
 # Обработчик непонятных сообщений

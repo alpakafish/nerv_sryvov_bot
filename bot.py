@@ -201,39 +201,27 @@ async def show_month_stats(message: types.Message):
     }
     month_name_ru = months_ru[month]
 
-    # Формируем статистику с красивым выравниванием
+    # Формируем статистику в простом текстовом формате
     response = f"📈 *Статистика за {month_name_ru} {year}:*\n\n"
-    response += "┌──────────┬─────────────┐\n"
-    response += "│    Дата  │ Количество │\n"
-    response += "├──────────┼─────────────┤\n"
 
+    # Собираем строки с днями, где есть срывы
+    days_with_stresses = []
     for day in range(1, days_in_month + 1):
         count = stats.get(day, 0)
-        # Форматируем строки с фиксированной шириной
-        date_str = f"{day:2d}.{month:02d}"
-
-        # Визуализация (полоски для наглядности)
         if count > 0:
-            bar = "█" * min(count, 15)  # максимум 15 полосок
-            count_display = f"{count} {bar}"
-        else:
-            count_display = "0"
+            # Визуализация полосками (максимум 15 полосок)
+            bars = "█" * min(count, 15)
+            days_with_stresses.append(f"• {day:2d}.{month:02d} — {count} {bars}")
 
-        response += f"│ {date_str}     │ {count_display:<12} │\n"
-
-        # Ограничиваем длину сообщения (Telegram лимит)
-        if len(response) > 3500:
-            response += "└──────────┴─────────────┘\n"
-            response += "\n*...статистика обрезана из-за длины*"
-            break
-
-    # Добавляем нижнюю границу таблицы
-    if not response.endswith("обрезана"):
-        response += "└──────────┴─────────────┘"
+    if days_with_stresses:
+        response += "\n".join(days_with_stresses)
+    else:
+        response += "✨ *В этом месяце не было ни одного срыва!* ✨"
 
     # Добавляем итог
     total_month = sum(stats.values())
-    response += f"\n\n*📊 Всего за месяц: {total_month}*"
+    if total_month > 0:
+        response += f"\n\n*📊 Всего за месяц: {total_month}*"
 
     await message.answer(response, reply_markup=get_main_keyboard(), parse_mode="Markdown")
 

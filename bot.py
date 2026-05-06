@@ -192,25 +192,48 @@ async def show_month_stats(message: types.Message):
 
     # Получаем количество дней в месяце
     days_in_month = calendar.monthrange(year, month)[1]
-    month_name = now.strftime("%B")
 
-    # Формируем статистику
-    response = f"📈 *Статистика за {month_name} {year}:*\n\n"
+    # Русские названия месяцев
+    months_ru = {
+        1: "Январь", 2: "Февраль", 3: "Март", 4: "Апрель",
+        5: "Май", 6: "Июнь", 7: "Июль", 8: "Август",
+        9: "Сентябрь", 10: "Октябрь", 11: "Ноябрь", 12: "Декабрь"
+    }
+    month_name_ru = months_ru[month]
+
+    # Формируем статистику с красивым выравниванием
+    response = f"📈 *Статистика за {month_name_ru} {year}:*\n\n"
+    response += "┌──────────┬─────────────┐\n"
+    response += "│    Дата  │ Количество │\n"
+    response += "├──────────┼─────────────┤\n"
 
     for day in range(1, days_in_month + 1):
         count = stats.get(day, 0)
-        # Визуализация (маленькие полоски)
-        bar = "█" * min(count, 10) if count > 0 else "·"
-        response += f"{day:2d}.{month:02d} │ {bar} {count}\n"
+        # Форматируем строки с фиксированной шириной
+        date_str = f"{day:2d}.{month:02d}"
 
-        # Ограничиваем длину сообщения (Telegram лимит ~4000 символов)
-        if len(response) > 3000:
+        # Визуализация (полоски для наглядности)
+        if count > 0:
+            bar = "█" * min(count, 15)  # максимум 15 полосок
+            count_display = f"{count} {bar}"
+        else:
+            count_display = "0"
+
+        response += f"│ {date_str}     │ {count_display:<12} │\n"
+
+        # Ограничиваем длину сообщения (Telegram лимит)
+        if len(response) > 3500:
+            response += "└──────────┴─────────────┘\n"
             response += "\n*...статистика обрезана из-за длины*"
             break
 
+    # Добавляем нижнюю границу таблицы
+    if not response.endswith("обрезана"):
+        response += "└──────────┴─────────────┘"
+
     # Добавляем итог
     total_month = sum(stats.values())
-    response += f"\n*Всего за месяц: {total_month}*"
+    response += f"\n\n*📊 Всего за месяц: {total_month}*"
 
     await message.answer(response, reply_markup=get_main_keyboard(), parse_mode="Markdown")
 

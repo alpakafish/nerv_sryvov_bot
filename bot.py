@@ -38,11 +38,25 @@ dp = Dispatcher(storage=storage)
 class StressState(StatesGroup):
     waiting_for_reason = State()  # Ждем текст причины срыва
 
+
 # --- Класс для хранения колоды заголовков для каждого пользователя ---
 class UserNewsSession:
-    def __init__(self):
-        self.all_titles = []
-        self.remaining_titles = []
+    def __init__(self, all_titles=None, remaining_titles=None):
+        if all_titles is None:
+            self.all_titles = []
+            self.remaining_titles = []
+        else:
+            self.all_titles = all_titles
+            self.remaining_titles = remaining_titles if remaining_titles is not None else all_titles.copy()
+
+        if self.remaining_titles:
+            random.shuffle(self.remaining_titles)
+
+    def to_dict(self):
+        return {
+            'all_titles': self.all_titles,
+            'remaining_titles': self.remaining_titles
+        }
 
     def refresh_pool(self, new_titles):
         self.all_titles = list(dict.fromkeys(new_titles))
@@ -76,22 +90,27 @@ def get_main_keyboard():
     )
     return keyboard
 
-# --- Функция парсинга заголовков ---
-def fetch_titles_from_page() -> list:
-    """Загружает страницу и извлекает все заголовки из тегов <h1>"""
-    try:
-        response = requests.get(NEWS_URL, headers=NEWS_HEADERS, timeout=15)
-        response.raise_for_status()
-        response.encoding = 'utf-8'
-        soup = BeautifulSoup(response.text, 'html.parser')
-        h1_tags = soup.find_all('h1')
-        titles = [h1.get_text(strip=True) for h1 in h1_tags if h1.get_text(strip=True)]
-        unique_titles = list(dict.fromkeys(titles))
-        print(f"Успешно получено {len(unique_titles)} уникальных заголовков")
-        return unique_titles
-    except Exception as e:
-        print(f"Ошибка при парсинге: {e}")
-        return []
+
+# --- Функция парсинга заголовков с повторными попытками ---
+def fetch_titles_from_page(retries=2) -> list:
+    """Загружает страницу и извлекает все заголовки из тегов <h1> с повторными попытками"""
+    for attempt in range(retries + 1):
+        try:
+            response = requests.get(NEWS_URL, headers=NEWS_HEADERS, timeout=15)
+            response.raise_for_status()
+            response.encoding = 'utf-8'
+            soup = BeautifulSoup(response.text, 'html.parser')
+            h1_tags = soup.find_all('h1')
+            titles = [h1.get_text(strip=True) for h1 in h1_tags if h1.get_text(strip=True)]
+            unique_titles = list(dict.fromkeys(titles))
+            print(f"Успешно получено {len(unique_titles)} уникальных заголовков")
+            return unique_titles
+        except Exception as e:
+            print(f"Попытка {attempt + 1} из {retries + 1} не удалась: {e}")
+            if attempt == retries:
+                return []
+            asyncio.sleep(2)  # Ждем перед повторной попыткой
+    return []
 
 
 # Обработчик команды /start
@@ -171,7 +190,8 @@ async def show_today_stresses(message: types.Message):
         if isinstance(created_at, datetime):
             time_str = created_at.strftime("%H:%M")
         else:
-            time_str = str(created_at)[:5]
+            # Более безопасное преобразование
+            time_str = str(created_at)[:16] if created_at else "время неизвестно"
         response += f"{i}. {stress['message_text']} ({time_str})\n"
 
     await message.answer(response, reply_markup=get_main_keyboard())
@@ -215,7 +235,7 @@ async def show_month_stresses(message: types.Message):
         if isinstance(created_at, datetime):
             date_str = created_at.strftime("%d.%m %H:%M")
         else:
-            date_str = str(created_at)[:16]
+            date_str = str(created_at)[:16] if created_at else "дата неизвестна"
         response += f"{i}. {stress['message_text']} ({date_str})\n"
 
     if len(stresses) > 20:
@@ -281,8 +301,8 @@ async def show_month_stats(message: types.Message):
         count = stats.get(day, 0)
         if count > 0:
             # Визуализация (максимум 10 эмодзи)
-            angry_face = "🤬"  # или можно 👿, 😤, 💢
-            bars = angry_face * min(count, 10)  # уменьшила до 10, чтобы не было слишком длинно
+            angry_face = "🤬"
+            bars = angry_face * min(count, 10)
             days_with_stresses.append(f"• {day:2d}.{month:02d} — {count} {bars}")
 
     if days_with_stresses:
@@ -307,23 +327,25 @@ async def handle_unknown(message: types.Message):
     )
 
 
-# Обработчик кнопки "Случайный срыв от Скелетора"
+# Обработчик кнопки "Случайный срыв от Скелетора" (ИСПРАВЛЕННЫЙ)
 @dp.message(lambda message: message.text == "🎲 Случайный срыв")
 async def random_news_stress(message: types.Message, state: FSMContext):
     user_id = message.from_user.id
     user_data = await state.get_data()
-    session_data = user_data.get('news_session')
 
-    if session_data is None:
-        session = UserNewsSession()
+    # Правильное восстановление сессии
+    session_data = user_data.get('news_session')
+    if session_data and isinstance(session_data, dict):
+        session = UserNewsSession(
+            all_titles=session_data.get('all_titles', []),
+            remaining_titles=session_data.get('remaining_titles', [])
+        )
     else:
         session = UserNewsSession()
-        session.all_titles = session_data.get('all_titles', [])
-        session.remaining_titles = session_data.get('remaining_titles', [])
 
     if not session.has_titles():
         await message.answer("🔄 Загружаю свежие научные новости с Naked Science...")
-        fresh_titles = fetch_titles_from_page()
+        fresh_titles = await asyncio.to_thread(fetch_titles_from_page)  # Запускаем в отдельном потоке
 
         if not fresh_titles:
             await message.answer(
@@ -337,10 +359,8 @@ async def random_news_stress(message: types.Message, state: FSMContext):
 
     if session.has_titles():
         random_title = session.get_random_title()
-        await state.update_data(news_session={
-            'all_titles': session.all_titles,
-            'remaining_titles': session.remaining_titles
-        })
+        # Сохраняем обновленную сессию
+        await state.update_data(news_session=session.to_dict())
 
         response = (
             f"🧠 *Случайный научный нервный срыв от Скелетора:*\n\n"
@@ -358,6 +378,25 @@ async def random_news_stress(message: types.Message, state: FSMContext):
         )
 
 
+# Функция для запуска Flask сервера
+def run_flask():
+    from flask import Flask
+    import os
+
+    flask_app = Flask(__name__)
+
+    @flask_app.route('/')
+    def hello():
+        return "Bot is running!"
+
+    @flask_app.route('/health')
+    def health():
+        return "OK"
+
+    port = int(os.environ.get("PORT", 5000))
+    flask_app.run(host="0.0.0.0", port=port)
+
+
 # Запуск бота
 async def main():
     # Инициализируем базу данных
@@ -370,31 +409,13 @@ async def main():
     await dp.start_polling(bot)
 
 
-# Добавь эти строки в bot.py для работы на Render
-from flask import Flask
-import threading
-import os
-
-flask_app = Flask(__name__)
-
-
-@flask_app.route('/')
-def hello():
-    return "Bot is running!"
-
-
-@flask_app.route('/health')
-def health():
-    return "OK"
-
-
-def run_flask():
-    port = int(os.environ.get("PORT", 5000))
-    flask_app.run(host="0.0.0.0", port=port)
-
-
-# Запускаем Flask в отдельном потоке
-threading.Thread(target=run_flask).start()
-
 if __name__ == "__main__":
+    # Запускаем Flask в отдельном потоке только если не на локальной разработке
+    import sys
+
+    if '--no-flask' not in sys.argv:
+        import threading
+
+        threading.Thread(target=run_flask, daemon=True).start()
+
     asyncio.run(main())

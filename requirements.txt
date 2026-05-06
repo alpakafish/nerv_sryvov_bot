@@ -4,3 +4,5 @@ pytz
 flask
 asyncpg
 cryptography
+requests
+beautifulsoup4

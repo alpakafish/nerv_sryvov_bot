@@ -18,6 +18,16 @@ import calendar
 import pytz
 from config import TIMEZONE
 
+import requests
+from bs4 import BeautifulSoup
+import random
+
+# --- Конфигурация для парсинга новостей ---
+NEWS_URL = "https://naked-science.ru/?yandex_feed=news"
+NEWS_HEADERS = {
+    'User-Agent': 'Mozilla/5.0 (Macintosh; Intel Mac OS X 10_15_7) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/120.0.0.0 Safari/537.36'
+}
+
 # Создаем бота и диспетчер
 bot = Bot(token=BOT_TOKEN)
 storage = MemoryStorage()
@@ -28,6 +38,26 @@ dp = Dispatcher(storage=storage)
 class StressState(StatesGroup):
     waiting_for_reason = State()  # Ждем текст причины срыва
 
+# --- Класс для хранения колоды заголовков для каждого пользователя ---
+class UserNewsSession:
+    def __init__(self):
+        self.all_titles = []
+        self.remaining_titles = []
+
+    def refresh_pool(self, new_titles):
+        self.all_titles = list(dict.fromkeys(new_titles))
+        self.remaining_titles = self.all_titles.copy()
+        random.shuffle(self.remaining_titles)
+        print(f"Пул обновлен. Всего заголовков: {len(self.all_titles)}")
+
+    def has_titles(self):
+        return len(self.remaining_titles) > 0
+
+    def get_random_title(self):
+        if self.has_titles():
+            return self.remaining_titles.pop()
+        return None
+
 
 # Создаем клавиатуру меню
 def get_main_keyboard():
@@ -36,7 +66,8 @@ def get_main_keyboard():
         [KeyboardButton(text="📆 Срывы за сегодня")],
         [KeyboardButton(text="📅 Срывы за месяц")],
         [KeyboardButton(text="📊 Всего срывов")],
-        [KeyboardButton(text="📈 Статистика месяца")]
+        [KeyboardButton(text="📈 Статистика месяца")],
+        [KeyboardButton(text="🎲 Случайный срыв")]
     ]
     keyboard = ReplyKeyboardMarkup(
         keyboard=buttons,
@@ -44,6 +75,23 @@ def get_main_keyboard():
         one_time_keyboard=False
     )
     return keyboard
+
+# --- Функция парсинга заголовков ---
+def fetch_titles_from_page() -> list:
+    """Загружает страницу и извлекает все заголовки из тегов <h1>"""
+    try:
+        response = requests.get(NEWS_URL, headers=NEWS_HEADERS, timeout=15)
+        response.raise_for_status()
+        response.encoding = 'utf-8'
+        soup = BeautifulSoup(response.text, 'html.parser')
+        h1_tags = soup.find_all('h1')
+        titles = [h1.get_text(strip=True) for h1 in h1_tags if h1.get_text(strip=True)]
+        unique_titles = list(dict.fromkeys(titles))
+        print(f"Успешно получено {len(unique_titles)} уникальных заголовков")
+        return unique_titles
+    except Exception as e:
+        print(f"Ошибка при парсинге: {e}")
+        return []
 
 
 # Обработчик команды /start
@@ -257,6 +305,57 @@ async def handle_unknown(message: types.Message):
         "Пожалуйста, используй кнопки меню. Если меню пропало, нажми /start",
         reply_markup=get_main_keyboard()
     )
+
+
+# Обработчик кнопки "Случайный срыв от Скелетора"
+@dp.message(lambda message: message.text == "🎲 Случайный срыв от Скелетора")
+async def random_news_stress(message: types.Message, state: FSMContext):
+    user_id = message.from_user.id
+    user_data = await state.get_data()
+    session_data = user_data.get('news_session')
+
+    if session_data is None:
+        session = UserNewsSession()
+    else:
+        session = UserNewsSession()
+        session.all_titles = session_data.get('all_titles', [])
+        session.remaining_titles = session_data.get('remaining_titles', [])
+
+    if not session.has_titles():
+        await message.answer("🔄 Загружаю свежие научные новости с Naked Science...")
+        fresh_titles = fetch_titles_from_page()
+
+        if not fresh_titles:
+            await message.answer(
+                "⚠️ Не удалось загрузить свежие научные новости.\n"
+                "Попробуй позже или нажми кнопку снова.",
+                reply_markup=get_main_keyboard()
+            )
+            return
+
+        session.refresh_pool(fresh_titles)
+
+    if session.has_titles():
+        random_title = session.get_random_title()
+        await state.update_data(news_session={
+            'all_titles': session.all_titles,
+            'remaining_titles': session.remaining_titles
+        })
+
+        response = (
+            f"🧠 *Случайный научный нервный срыв от Скелетора:*\n\n"
+            f"{random_title}\n\n"
+            f"🎲 Нажми снова, чтобы получить другую причину.\n"
+            f"_Осталось новостей: {len(session.remaining_titles)}_"
+        )
+        await message.answer(response, parse_mode="Markdown", reply_markup=get_main_keyboard())
+    else:
+        await message.answer(
+            "⚡️ *Причины на сегодня закончились!*\n\n"
+            "Скелетор вернется позже с другими причинами для нервного срыва.",
+            parse_mode="Markdown",
+            reply_markup=get_main_keyboard()
+        )
 
 
 # Запуск бота

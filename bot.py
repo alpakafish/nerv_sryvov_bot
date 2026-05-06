@@ -117,7 +117,7 @@ async def show_today_stresses(message: types.Message):
         return
 
     # Формируем ответ
-    response = "📆 *Твои срывы за сегодня:*\n\n"
+    response = "📆 Твои срывы за сегодня:\n\n"
     for i, stress in enumerate(stresses, 1):
         created_at = stress['created_at']
         if isinstance(created_at, datetime):
@@ -161,7 +161,7 @@ async def show_month_stresses(message: types.Message):
     }
     month_name_ru = months_ru.get(now.strftime("%B"), now.strftime("%B"))
 
-    response = f"📅 *Твои срывы за {month_name_ru} {now.year}:*\n\n"
+    response = f"📅 Твои срывы за {month_name_ru} {now.year}:\n\n"
     for i, stress in enumerate(stresses[-20:], 1):
         created_at = stress['created_at']
         if isinstance(created_at, datetime):
@@ -171,7 +171,7 @@ async def show_month_stresses(message: types.Message):
         response += f"{i}. {stress['message_text']} ({date_str})\n"
 
     if len(stresses) > 20:
-        response += f"\n*Всего срывов за месяц: {len(stresses)}*"
+        response += f"\nВсего срывов за месяц: {len(stresses)}"
 
     await message.answer(response, reply_markup=get_main_keyboard())
 
@@ -225,7 +225,7 @@ async def show_month_stats(message: types.Message):
     month_name_ru = months_ru[month]
 
     # Формируем статистику в простом текстовом формате
-    response = f"📈 *Статистика за {month_name_ru} {year}:*\n\n"
+    response = f"📈 Статистика за {month_name_ru} {year}:\n\n"
 
     # Собираем строки с днями, где есть срывы
     days_with_stresses = []
@@ -240,12 +240,12 @@ async def show_month_stats(message: types.Message):
     if days_with_stresses:
         response += "\n".join(days_with_stresses)
     else:
-        response += "✨ *В этом месяце не было ни одного срыва!* ✨"
+        response += "✨ В этом месяце не было ни одного срыва! ✨"
 
     # Добавляем итог
     total_month = sum(stats.values())
     if total_month > 0:
-        response += f"\n\n*📊 Всего за месяц: {total_month}*"
+        response += f"\n\n📊 Всего за месяц: {total_month}"
 
     await message.answer(response, reply_markup=get_main_keyboard())
 

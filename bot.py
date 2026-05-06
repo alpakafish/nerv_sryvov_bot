@@ -308,7 +308,7 @@ async def handle_unknown(message: types.Message):
 
 
 # Обработчик кнопки "Случайный срыв от Скелетора"
-@dp.message(lambda message: message.text == "🎲 Случайный срыв от Скелетора")
+@dp.message(lambda message: message.text == "🎲 Случайный срыв")
 async def random_news_stress(message: types.Message, state: FSMContext):
     user_id = message.from_user.id
     user_data = await state.get_data()

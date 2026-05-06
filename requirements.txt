@@ -3,3 +3,4 @@ python-dotenv
 pytz
 flask
 asyncpg
+cryptography

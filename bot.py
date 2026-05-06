@@ -1,17 +1,18 @@
 import asyncio
 from aiogram import Bot, Dispatcher, types
 from aiogram.filters import Command
-from aiogram.types import ReplyKeyboardMarkup, KeyboardButton, InlineKeyboardMarkup, InlineKeyboardButton
+from aiogram.types import ReplyKeyboardMarkup, KeyboardButton
 from aiogram.fsm.context import FSMContext
 from aiogram.fsm.state import State, StatesGroup
 from aiogram.fsm.storage.memory import MemoryStorage
 
-from config import BOT_TOKEN
 from database import (
     init_db, register_user, save_stress_message,
     get_today_stresses, get_month_stresses, get_total_stresses,
     get_month_statistics, get_next_today_number
 )
+
+from config import BOT_TOKEN
 from datetime import datetime
 import calendar
 import pytz
@@ -50,7 +51,7 @@ def get_main_keyboard():
 async def cmd_start(message: types.Message):
     # Регистрируем пользователя
     user = message.from_user
-    register_user(
+    await register_user(
         user.id,
         user.username,
         user.first_name,
@@ -69,7 +70,7 @@ async def cmd_start(message: types.Message):
 @dp.message(lambda message: message.text == "😫 Причина нервного срыва")
 async def add_stress(message: types.Message, state: FSMContext):
     # Получаем следующий номер за сегодня
-    next_number = get_next_today_number(message.from_user.id)
+    next_number = await get_next_today_number(message.from_user.id)
     await state.set_state(StressState.waiting_for_reason)
     await message.answer(
         f"📝 Напиши, что вывело тебя из себя.\n"
@@ -89,10 +90,10 @@ async def process_stress_reason(message: types.Message, state: FSMContext):
     user_id = message.from_user.id
 
     # Сохраняем в базу данных
-    save_stress_message(user_id, reason_text)
+    await save_stress_message(user_id, reason_text)
 
     # Получаем номер сообщения
-    number = get_next_today_number(user_id)
+    number = await get_next_today_number(user_id)
 
     await state.clear()  # Очищаем состояние
     await message.answer(
@@ -106,7 +107,7 @@ async def process_stress_reason(message: types.Message, state: FSMContext):
 # Обработчик кнопки "Срывы за сегодня"
 @dp.message(lambda message: message.text == "📆 Срывы за сегодня")
 async def show_today_stresses(message: types.Message):
-    stresses = get_today_stresses(message.from_user.id)
+    stresses = await get_today_stresses(message.from_user.id)
 
     if not stresses:
         await message.answer(
@@ -118,8 +119,11 @@ async def show_today_stresses(message: types.Message):
     # Формируем ответ
     response = "📆 *Твои срывы за сегодня:*\n\n"
     for i, stress in enumerate(stresses, 1):
-        created_at = datetime.fromisoformat(str(stress['created_at']))
-        time_str = created_at.strftime("%H:%M")
+        created_at = stress['created_at']
+        if isinstance(created_at, datetime):
+            time_str = created_at.strftime("%H:%M")
+        else:
+            time_str = str(created_at)[:5]
         response += f"{i}. {stress['message_text']} ({time_str})\n"
 
     await message.answer(response, reply_markup=get_main_keyboard(), parse_mode="Markdown")
@@ -128,23 +132,42 @@ async def show_today_stresses(message: types.Message):
 # Обработчик кнопки "Срывы за месяц"
 @dp.message(lambda message: message.text == "📅 Срывы за месяц")
 async def show_month_stresses(message: types.Message):
-    stresses = get_month_stresses(message.from_user.id)
+    stresses = await get_month_stresses(message.from_user.id)
 
     if not stresses:
         tz = pytz.timezone(TIMEZONE)
         now = datetime.now(tz)
         month_name = now.strftime("%B")
+        # Переводим название месяца на русский
+        months_ru = {
+            "January": "Январь", "February": "Февраль", "March": "Март", "April": "Апрель",
+            "May": "Май", "June": "Июнь", "July": "Июль", "August": "Август",
+            "September": "Сентябрь", "October": "Октябрь", "November": "Ноябрь", "December": "Декабрь"
+        }
+        month_name_ru = months_ru.get(month_name, month_name)
         await message.answer(
-            f"📅 За {month_name} у тебя не было срывов. Отлично!",
+            f"📅 За {month_name_ru} у тебя не было срывов. Отлично!",
             reply_markup=get_main_keyboard()
         )
         return
 
     # Формируем ответ (показываем последние 20, чтобы не перегружать)
-    response = f"📅 *Твои срывы за {datetime.now(pytz.timezone(TIMEZONE)).strftime('%B %Y')}:*\n\n"
+    tz = pytz.timezone(TIMEZONE)
+    now = datetime.now(tz)
+    months_ru = {
+        "January": "Январь", "February": "Февраль", "March": "Март", "April": "Апрель",
+        "May": "Май", "June": "Июнь", "July": "Июль", "August": "Август",
+        "September": "Сентябрь", "October": "Октябрь", "November": "Ноябрь", "December": "Декабрь"
+    }
+    month_name_ru = months_ru.get(now.strftime("%B"), now.strftime("%B"))
+
+    response = f"📅 *Твои срывы за {month_name_ru} {now.year}:*\n\n"
     for i, stress in enumerate(stresses[-20:], 1):
-        created_at = datetime.fromisoformat(str(stress['created_at']))
-        date_str = created_at.strftime("%d.%m %H:%M")
+        created_at = stress['created_at']
+        if isinstance(created_at, datetime):
+            date_str = created_at.strftime("%d.%m %H:%M")
+        else:
+            date_str = str(created_at)[:16]
         response += f"{i}. {stress['message_text']} ({date_str})\n"
 
     if len(stresses) > 20:
@@ -156,7 +179,7 @@ async def show_month_stresses(message: types.Message):
 # Обработчик кнопки "Всего срывов"
 @dp.message(lambda message: message.text == "📊 Всего срывов")
 async def show_total_stresses(message: types.Message):
-    total = get_total_stresses(message.from_user.id)
+    total = await get_total_stresses(message.from_user.id)
 
     if total == 0:
         await message.answer(
@@ -183,7 +206,7 @@ async def show_total_stresses(message: types.Message):
 # Обработчик кнопки "Статистика месяца"
 @dp.message(lambda message: message.text == "📈 Статистика месяца")
 async def show_month_stats(message: types.Message):
-    stats = get_month_statistics(message.from_user.id)
+    stats = await get_month_statistics(message.from_user.id)
 
     tz = pytz.timezone(TIMEZONE)
     now = datetime.now(tz)
@@ -238,13 +261,14 @@ async def handle_unknown(message: types.Message):
 # Запуск бота
 async def main():
     # Инициализируем базу данных
-    init_db()
+    await init_db()
     print("✅ Бот запущен и готов к работе!")
-    print(f"📁 База данных: stress_bot.db")
+    print(f"📁 База данных: PostgreSQL на Render")
     print(f"🕐 Временная зона сервера: {TIMEZONE}")
 
     # Запускаем бота
     await dp.start_polling(bot)
+
 
 # Добавь эти строки в bot.py для работы на Render
 from flask import Flask
@@ -253,21 +277,24 @@ import os
 
 flask_app = Flask(__name__)
 
+
 @flask_app.route('/')
 def hello():
     return "Bot is running!"
+
 
 @flask_app.route('/health')
 def health():
     return "OK"
 
+
 def run_flask():
     port = int(os.environ.get("PORT", 5000))
     flask_app.run(host="0.0.0.0", port=port)
 
+
 # Запускаем Flask в отдельном потоке
 threading.Thread(target=run_flask).start()
-
 
 if __name__ == "__main__":
     asyncio.run(main())
